@@ -9,6 +9,8 @@ Children who live in another city, state or country can send their own Claude a 
 
 **Nearby has no AI inside.** It holds no AI keys and makes no model calls. The customer's own Claude does the reading and writing over MCP. Nearby does the saving, sharing and editing, and keeps the record live after the chat ends.
 
+**The app:** a sidebar layout on laptop and a bottom tab bar on phone (Home, Calendar, Claude, Settings). It has light, dark and automatic themes and can be installed on a phone's home screen. Screens: per-parent care boards that update live, a family calendar, and a helper checklist built for phones.
+
 ## Try it
 
 | | |

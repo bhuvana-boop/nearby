@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { CalendarDays, Clock, HeartPulse, ListTodo, MapPin, Pill, Send, StickyNote, TriangleAlert } from "lucide-react";
 import AutoRefresh from "@/components/AutoRefresh";
-import { activity, doseView, getItems, getParentByHelperToken, parentLabel, READING_KINDS } from "@/lib/care";
+import { DoseGroups, READING_CHIPS, TaskList } from "@/components/Care";
+import { Avatar, BrandMark, Ring } from "@/components/ui";
+import { activity, doseView, getItems, getParentByHelperToken, parentLabel } from "@/lib/care";
 import { one } from "@/lib/db";
 import { addDays, fmtDate, fmtStamp, fmtTime, relDay } from "@/lib/time";
-import { helperAddUpdate, helperLogDose, helperSetStatus } from "@/app/actions";
+import { helperAddUpdate } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Today's care checklist · Nearby", robots: { index: false } };
+export const metadata: Metadata = { title: "Today’s care", robots: { index: false } };
 
 export default async function Helper({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<Record<string, string>> }) {
   const { token } = await params;
@@ -20,179 +23,162 @@ export default async function Helper({ params, searchParams }: { params: Promise
   const today = dv.now.date;
   const yesterdayMissed = dv.missed.filter((s) => s.date < today);
   const appts = items.filter((i) => i.kind === "appointment" && i.status === "active" && i.due_date >= today && i.due_date <= addDays(today, 30));
-  const tasks = items.filter((i) => i.kind === "task" && i.status === "active");
-  const recentDone = items.filter((i) => i.kind === "task" && i.status === "done").slice(0, 3);
-  const notes = (await activity({ parentId: p.id, limit: 20 })).filter((l) => l.action === "note" || l.action === "reading").slice(0, 4);
+  const tasks = items.filter((i) => i.kind === "task" && (i.status === "active" || i.status === "done")).filter((t) => t.status === "active" || t.updated_at > new Date(Date.now() - 2 * 86400000).toISOString());
+  const notes = (await activity({ parentId: p.id, limit: 20 })).filter((l) => l.action === "note" || l.action === "reading").slice(0, 3);
   const who = p.relation || p.name;
   const helperFirst = p.helper_name ? p.helper_name.replace(/\s*\(.*\)/, "") : "";
-  const pending = dv.today.filter((s) => s.state !== "given" && s.state !== "skipped").length;
-
-  const DoseRow = ({ s }: { s: (typeof dv.today)[number] }) => (
-    <div className={`dose ${s.state}`}>
-      <div className="time">{fmtTime(s.time)}</div>
-      <div className="grow">
-        <div className="item-title">
-          {s.item.title} <span className="muted" style={{ fontWeight: 400 }}>{s.item.dose}</span>
-        </div>
-        {s.item.instructions && <div className="item-meta">{s.item.instructions}</div>}
-        {s.date !== today && <div className="item-meta">{fmtDate(s.date)}</div>}
-      </div>
-      {s.state === "given" || s.state === "skipped" ? (
-        <form action={helperLogDose} className="row" style={{ gap: 12, width: "100%", paddingLeft: 2 }}>
-          <input type="hidden" name="token" value={token} />
-          <input type="hidden" name="item_id" value={s.item.id} />
-          <input type="hidden" name="date" value={s.date} />
-          <input type="hidden" name="time" value={s.time} />
-          <span className={s.state === "given" ? "tick" : "muted"}>{s.state === "given" ? "✓ Given" : "Skipped"}</span>
-          <button className="linkbtn small" name="action" value="undo">Undo</button>
-        </form>
-      ) : (
-        <div className="actions">
-          <form action={helperLogDose}>
-            <input type="hidden" name="token" value={token} />
-            <input type="hidden" name="item_id" value={s.item.id} />
-            <input type="hidden" name="date" value={s.date} />
-            <input type="hidden" name="time" value={s.time} />
-            <button className="btn btn-primary" name="action" value="given">✓ Given</button>
-          </form>
-          <form action={helperLogDose} style={{ flex: "0 0 34%" }}>
-            <input type="hidden" name="token" value={token} />
-            <input type="hidden" name="item_id" value={s.item.id} />
-            <input type="hidden" name="date" value={s.date} />
-            <input type="hidden" name="time" value={s.time} />
-            <button className="btn" name="action" value="skipped">Skip</button>
-          </form>
-        </div>
-      )}
-    </div>
-  );
+  const total = dv.today.length;
+  const given = dv.today.filter((s) => s.state === "given" || s.state === "skipped").length;
+  const nextDue = dv.today.find((s) => s.state === "due" || s.state === "upcoming" || s.state === "missed");
 
   return (
-    <main className="helper">
+    <div className="helper-wrap">
       <AutoRefresh seconds={15} />
-      <div className="row between">
-        <span className="logo" style={{ fontSize: 17 }}>
-          <span className="logo-mark" style={{ width: 24, height: 24, fontSize: 13 }}>◐</span> Nearby
-        </span>
-        <span className="faint small">{fmtDate(today)} · {fmtTime(dv.now.time)}</span>
-      </div>
-
-      <h1 style={{ marginTop: 18 }}>{who}’s care today</h1>
-      <p className="muted" style={{ marginTop: 6 }}>
-        {helperFirst ? `Hi ${helperFirst}! ` : ""}Tap <strong>Given</strong> after each medicine. {fam?.name ?? "The family"} can see it instantly.
-      </p>
-
-      <section className="card mt">
-        <div className="section-head">
-          <h2>Medicines</h2>
-          <span className={`badge ${pending ? "warn" : "ok"}`}>{pending ? `${pending} left` : "All done"}</span>
-        </div>
-        {dv.today.length ? dv.today.map((s) => <DoseRow key={`${s.item.id}${s.time}`} s={s} />) : <p className="muted">No medicines today.</p>}
-      </section>
-
-      {yesterdayMissed.length > 0 && (
-        <section className="card mt">
-          <h3>Yesterday – not marked</h3>
-          <p className="muted small" style={{ marginTop: 4 }}>If these were given, please tick them.</p>
-          <div style={{ marginTop: 10 }}>
-            {yesterdayMissed.map((s) => (
-              <DoseRow key={`${s.item.id}${s.date}${s.time}`} s={s} />
-            ))}
+      <div className="helper">
+        <header className="helper-hero">
+          <div className="row between" style={{ position: "relative", zIndex: 1 }}>
+            <span className="brand" style={{ fontSize: 16, color: "#fff" }}>
+              <BrandMark size={26} /> Nearby
+            </span>
+            <span style={{ color: "#a9c7cb", fontSize: 13, fontWeight: 600 }}>{fmtDate(today)} · {fmtTime(dv.now.time)}</span>
           </div>
-        </section>
-      )}
+          <div className="row nowrap" style={{ marginTop: 22, gap: 14, position: "relative", zIndex: 1 }}>
+            <Avatar name={who} seed={p.id} size="lg" />
+            <div>
+              <h1>{who}’s day</h1>
+              <p className="sub">{helperFirst ? `Hi ${helperFirst} 👋 ` : ""}Tap Given after each medicine.</p>
+            </div>
+          </div>
+        </header>
 
-      <section className="card mt">
-        <h2>Send an update to the family</h2>
-        {sp.sent && <div className="notice" style={{ marginTop: 10 }}>Sent ✓ The family can see it now.</div>}
-        <form action={helperAddUpdate} className="stack-sm" style={{ marginTop: 12 }}>
-          <input type="hidden" name="token" value={token} />
-          <select name="kind" defaultValue="bp">
-            {Object.entries(READING_KINDS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-          <input name="text" required placeholder="e.g. 130/84, or 'Ate well, slept early'" />
-          <button className="btn btn-accent btn-lg" style={{ width: "100%" }}>Send</button>
-        </form>
-        {notes.length > 0 && (
-          <ul className="list" style={{ marginTop: 14 }}>
-            {notes.map((n) => (
-              <li key={n.id} className="small">
-                {n.note}
-                <div className="faint tiny">{n.actor} · {fmtStamp(n.created_at, dv.tz)}</div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+        <div className="helper-body stack">
+          <div className="card progress-card">
+            <Ring pct={total ? Math.round((given / total) * 100) : null} size={64} stroke={7} label={`${given}/${total}`} tone={given === total ? "ok" : ""} />
+            <div className="grow">
+              <div className="bold" style={{ fontSize: 17 }}>{total === 0 ? "No medicines today" : given === total ? "All done for today 🎉" : `${total - given} medicine${total - given > 1 ? "s" : ""} left today`}</div>
+              <div className="muted small">
+                {nextDue ? (
+                  <>
+                    Next: <strong>{nextDue.item.title}</strong> at {fmtTime(nextDue.time)}
+                  </>
+                ) : (
+                  `${fam?.name ?? "The family"} can see every tick instantly.`
+                )}
+              </div>
+            </div>
+          </div>
 
-      {tasks.length > 0 && (
-        <section className="card mt">
-          <h2>To do</h2>
-          <ul className="list" style={{ marginTop: 8 }}>
-            {tasks.map((t) => (
-              <li key={t.id}>
-                <div className="row between" style={{ alignItems: "flex-start" }}>
-                  <div className="grow">
-                    <div className="item-title">{t.title}</div>
-                    <div className="item-meta">
-                      {t.due_date ? `Due ${fmtDate(t.due_date)} (${relDay(t.due_date, today)})` : "No deadline"}
-                      {t.assignee && ` · ${t.assignee}`}
-                    </div>
-                    {t.instructions && <div className="item-meta">📝 {t.instructions}</div>}
-                  </div>
-                  <form action={helperSetStatus}>
-                    <input type="hidden" name="token" value={token} />
-                    <input type="hidden" name="item_id" value={t.id} />
-                    <input type="hidden" name="status" value="done" />
-                    <button className="btn">Done</button>
-                  </form>
-                </div>
-              </li>
-            ))}
-            {recentDone.map((t) => (
-              <li key={t.id} className="done">
-                <div className="row between">
-                  <div className="item-title">{t.title}</div>
-                  <form action={helperSetStatus}>
-                    <input type="hidden" name="token" value={token} />
-                    <input type="hidden" name="item_id" value={t.id} />
-                    <input type="hidden" name="status" value="active" />
-                    <button className="linkbtn small">Undo</button>
-                  </form>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+          <section className="card">
+            <div className="card-h">
+              <span className="ico"><Pill /></span>
+              <h2>Medicines</h2>
+            </div>
+            <div className="card-b">
+              <DoseGroups slots={dv.today} mode="helper" token={token} />
+            </div>
+          </section>
 
-      <section className="card mt">
-        <h2>Coming up</h2>
-        {appts.length ? (
-          <ul className="list" style={{ marginTop: 8 }}>
-            {appts.map((a) => (
-              <li key={a.id}>
-                <div className="item-title">{a.title}</div>
-                <div className="item-meta">
-                  {fmtDate(a.due_date)}
-                  {a.due_time && `, ${fmtTime(a.due_time)}`} · {relDay(a.due_date, today)}
-                </div>
-                {(a.place || a.doctor) && <div className="item-meta">{[a.place, a.doctor].filter(Boolean).join(" · ")}</div>}
-                {a.instructions && <div className="item-meta">📝 {a.instructions}</div>}
-                {a.assignee && <div className="item-meta">Going with: {a.assignee}</div>}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted" style={{ marginTop: 8 }}>No appointments in the next 30 days.</p>
-        )}
-      </section>
+          {yesterdayMissed.length > 0 && (
+            <section className="card">
+              <div className="card-h">
+                <span className="ico danger"><TriangleAlert /></span>
+                <h3>Yesterday · not marked</h3>
+              </div>
+              <div className="card-b">
+                <p className="muted small" style={{ marginBottom: 10 }}>If these were given, please tick them.</p>
+                <DoseGroups slots={yesterdayMissed} mode="helper" token={token} showDate />
+              </div>
+            </section>
+          )}
 
-      <p className="faint tiny" style={{ marginTop: 24, textAlign: "center" }}>
-        Shared with you by {fam?.name ?? "the family"} for {parentLabel(p)} · Nearby
-      </p>
-    </main>
+          <section className="card">
+            <div className="card-h">
+              <span className="ico danger"><HeartPulse /></span>
+              <h2>Send an update</h2>
+            </div>
+            <form action={helperAddUpdate} className="card-b stack-sm">
+              {sp.sent && <div className="notice"><Send /> Sent. The family can see it now.</div>}
+              <input type="hidden" name="token" value={token} />
+              <div className="radio-chips">
+                {READING_CHIPS.map(([k, label, icon]) => (
+                  <label key={k}>
+                    <input type="radio" name="kind" value={k} defaultChecked={k === "bp"} />
+                    <span>{icon} {label}</span>
+                  </label>
+                ))}
+              </div>
+              <input name="text" required placeholder="e.g. 130/84 · or ‘Ate well, slept early’" />
+              <button className="btn btn-accent btn-lg btn-block"><Send /> Send to family</button>
+              {notes.length > 0 && (
+                <ul className="rows" style={{ marginTop: 8 }}>
+                  {notes.map((n) => (
+                    <li key={n.id} className="small">
+                      <div className="row nowrap" style={{ gap: 8, alignItems: "flex-start" }}>
+                        <StickyNote size={15} className="faint" style={{ marginTop: 2 }} />
+                        <div>
+                          {n.note}
+                          <div className="faint tiny">{n.actor} · {fmtStamp(n.created_at, dv.tz)}</div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </form>
+          </section>
+
+          {tasks.length > 0 && (
+            <section className="card">
+              <div className="card-h">
+                <span className="ico ok"><ListTodo /></span>
+                <h2>To do</h2>
+              </div>
+              <div className="card-b">
+                <TaskList items={tasks} today={today} token={token} />
+              </div>
+            </section>
+          )}
+
+          <section className="card">
+            <div className="card-h">
+              <span className="ico accent"><CalendarDays /></span>
+              <h2>Coming up</h2>
+            </div>
+            <div className="card-b">
+              {appts.length ? (
+                <ul className="rows">
+                  {appts.map((a) => (
+                    <li key={a.id}>
+                      <div className="item">
+                        <div className="date-tile">
+                          <div className="m">{new Date(a.due_date + "T00:00:00Z").toLocaleString("en", { month: "short", timeZone: "UTC" })}</div>
+                          <div className="d">{Number(a.due_date.slice(8))}</div>
+                          <div className="w">{fmtDate(a.due_date).split(",")[0]}</div>
+                        </div>
+                        <div className="grow">
+                          <div className="i-title">{a.title}</div>
+                          <div className="i-meta">
+                            <span><Clock /> {a.due_time ? fmtTime(a.due_time) : "Time TBD"} · {relDay(a.due_date, today)}</span>
+                            {a.place && <span><MapPin /> {a.place}</span>}
+                          </div>
+                          {a.instructions && <div className="i-meta"><span><StickyNote /> {a.instructions}</span></div>}
+                          {a.assignee && <div className="i-meta">Going with: {a.assignee}</div>}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted small">No visits in the next 30 days.</p>
+              )}
+            </div>
+          </section>
+
+          <p className="faint tiny" style={{ textAlign: "center", paddingTop: 8 }}>
+            Shared with you by {fam?.name ?? "the family"} for {parentLabel(p)} · Nearby
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

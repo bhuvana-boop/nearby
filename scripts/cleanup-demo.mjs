@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { neon } from "@neondatabase/serverless";
-const env = Object.fromEntries(readFileSync(".env.local", "utf8").split(/\r?\n/).filter(l => l.includes("=")).map(l => { const i = l.indexOf("="); return [l.slice(0, i), l.slice(i + 1).replace(/^"|"$/g, "")]; }));
+const env = Object.fromEntries(readFileSync(".env.vercel", "utf8").split(/\r?\n/).filter(l => l.includes("=")).map(l => { const i = l.indexOf("="); return [l.slice(0, i), l.slice(i + 1).replace(/^"|"$/g, "")]; }));
 const sql = neon(env.DATABASE_URL);
 const extra = await sql.query(`SELECT id, name FROM parents WHERE family_id='f_demo01' AND id <> 'p_amma01'`);
 console.log("removing", extra);
