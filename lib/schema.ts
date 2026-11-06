@@ -1,0 +1,63 @@
+// All timestamps are ISO strings and all dates are YYYY-MM-DD text, so Neon and PGlite behave identically.
+export const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS families (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    mcp_key TEXT UNIQUE NOT NULL,
+    cal_token TEXT UNIQUE NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS parents (
+    id TEXT PRIMARY KEY,
+    family_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    relation TEXT,
+    age INTEGER,
+    city TEXT,
+    conditions TEXT,
+    helper_name TEXT,
+    helper_phone TEXT,
+    helper_token TEXT UNIQUE NOT NULL,
+    timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+    notes TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS items (
+    id TEXT PRIMARY KEY,
+    parent_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    dose TEXT,
+    times TEXT,
+    instructions TEXT,
+    purpose TEXT,
+    start_date TEXT,
+    end_date TEXT,
+    due_date TEXT,
+    due_time TEXT,
+    doctor TEXT,
+    place TEXT,
+    assignee TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    source TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS items_parent ON items(parent_id)`,
+  `CREATE TABLE IF NOT EXISTS logs (
+    id TEXT PRIMARY KEY,
+    family_id TEXT NOT NULL,
+    parent_id TEXT NOT NULL,
+    item_id TEXT,
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    note TEXT,
+    dose_date TEXT,
+    dose_time TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS logs_parent ON logs(parent_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS logs_family ON logs(family_id, created_at)`,
+];

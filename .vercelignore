@@ -1,0 +1,6 @@
+PITCH.md
+scripts/
+.data
+.next
+.env*
+node_modules
